@@ -195,7 +195,10 @@ def main() -> None:
         (out / f"{tag}.jsonl").write_text("".join(
             json.dumps({"item": i, "record": asdict(r)}, default=str) + "\n" for i, r in zip(items, recs)))
         print(json.dumps({cname: s}, indent=1))
-    (out / f"summary_{args.generator}.json").write_text(json.dumps(summary, indent=1))
+    sfile = out / f"summary_{args.generator}.json"
+    merged = json.loads(sfile.read_text()) if sfile.exists() else {}
+    merged.update(summary)  # keep results of configs not re-run
+    sfile.write_text(json.dumps(merged, indent=1))
 
 
 if __name__ == "__main__":

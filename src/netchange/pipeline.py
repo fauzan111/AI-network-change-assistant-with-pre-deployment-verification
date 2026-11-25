@@ -168,10 +168,13 @@ class Pipeline:
         """Probe the live network BEFORE changing it. Refuse to change a network that is already
         unhealthy, and keep the snapshot so rollback can be checked against it exactly."""
         t0 = time.time()
+        inv_probes = invariant_probes(self.topo, self.inv)
         probes = self.lab.run_probes(self._probes(intent))
         self._pre = {(p.src, p.dst, p.ports): p.got for p in probes}
-        inv_keys = {(p.src, p.dst, p.ports) for p in invariant_probes(self.topo, self.inv)}
-        bad = [p for p in probes if (p.src, p.dst, p.ports) in inv_keys and not p.ok]
+        # judge health on the invariant probes only: the intent's own probes are EXPECTED to differ
+        # before the change (and may share src/dst/port with an invariant probe)
+        n_inv = len(inv_probes)
+        bad = [p for p in probes[:n_inv] if not p.ok]
         rec.timings["preflight"] = round(time.time() - t0, 2)
         rec.probes = [{"stage": "preflight", "src": p.src, "dst": p.dst, "ports": p.ports,
                        "expect": p.expect, "got": p.got} for p in bad]

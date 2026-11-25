@@ -1,9 +1,9 @@
 {
  "full": {
-  "n": 4,
+  "n": 61,
   "valid_completed": 1.0,
   "valid_wrongly_rejected": 0.0,
-  "invalid_rejected_before_lab": null,
+  "invalid_rejected_before_lab": 1.0,
   "invalid_reached_lab": 0,
   "hostile_never_applied": null,
   "ambiguous_clarified": null,
@@ -15,15 +15,71 @@
   "rollback_success": 1.0,
   "rollbacks": 1,
   "errors": 0,
-  "time_applied_p50_s": 6.9,
-  "time_applied_p95_s": 6.83,
-  "time_rejected_p50_s": null,
+  "time_applied_p50_s": 6.85,
+  "time_applied_p95_s": 9.77,
+  "time_rejected_p50_s": 2.42,
   "outcomes": {
-   "applied": 2,
+   "noop": 8,
+   "rejected": 28,
+   "applied": 23,
    "rolled_back": 1,
    "preflight_failed": 1
   },
   "llm_calls": 0,
-  "wall_seconds": 27.9
+  "wall_seconds": 274.8
+ },
+ "live-only": {
+  "n": 61,
+  "valid_completed": 1.0,
+  "valid_wrongly_rejected": 0.0,
+  "invalid_rejected_before_lab": 0.0,
+  "invalid_reached_lab": 28,
+  "hostile_never_applied": null,
+  "ambiguous_clarified": null,
+  "unsupported_refused": null,
+  "live_faults_handled": 1.0,
+  "unsafe_changes_reached_lab": 28,
+  "unsafe_changes_left_in_lab": 9,
+  "unintended_reachability_changes_applied": 4,
+  "rollback_success": 1.0,
+  "rollbacks": 20,
+  "errors": 0,
+  "time_applied_p50_s": 6.9,
+  "time_applied_p95_s": 9.66,
+  "time_rejected_p50_s": null,
+  "outcomes": {
+   "noop": 8,
+   "rolled_back": 20,
+   "applied": 32,
+   "preflight_failed": 1
+  },
+  "llm_calls": 0,
+  "wall_seconds": 445.2
+ },
+ "llm-only": {
+  "n": 61,
+  "valid_completed": 1.0,
+  "valid_wrongly_rejected": 0.0,
+  "invalid_rejected_before_lab": 0.0,
+  "invalid_reached_lab": 28,
+  "hostile_never_applied": null,
+  "ambiguous_clarified": null,
+  "unsupported_refused": null,
+  "live_faults_handled": 0.0,
+  "unsafe_changes_reached_lab": 28,
+  "unsafe_changes_left_in_lab": 28,
+  "unintended_reachability_changes_applied": 4,
+  "rollback_success": null,
+  "rollbacks": 0,
+  "errors": 0,
+  "time_applied_p50_s": 2.68,
+  "time_applied_p95_s": 5.54,
+  "time_rejected_p50_s": null,
+  "outcomes": {
+   "noop": 8,
+   "applied": 53
+  },
+  "llm_calls": 0,
+  "wall_seconds": 179.6
  }
 }
