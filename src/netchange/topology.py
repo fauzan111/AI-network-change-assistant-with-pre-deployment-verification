@@ -70,7 +70,7 @@ class Topology(BaseModel):
                     raise ValueError(f"{rname}:{ifname} needs exactly one of peer/lan")
                 if i.peer and i.peer not in self.routers:
                     raise ValueError(f"{rname}:{ifname} peer {i.peer} unknown")
-        for z, cidr in self.zones.items():
+        for cidr in self.zones.values():
             ipaddress.IPv4Network(cidr)  # raises on bad CIDR
         return self
 

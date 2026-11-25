@@ -146,11 +146,11 @@ def _rule(src_cidr: str, intent: Intent, target: str) -> str:
 
 
 def _insert_before_commit(text: str, line: str) -> str:
-    return re.sub(r"^COMMIT\s*$", line + "\nCOMMIT", text, count=1, flags=re.M)
+    return re.sub(r"^COMMIT\s*$", line + "\nCOMMIT", text, count=1, flags=re.MULTILINE)
 
 
 def _insert_first_rule(text: str, line: str) -> str:
-    m = re.search(r"^-A INPUT", text, flags=re.M)
+    m = re.search(r"^-A INPUT", text, flags=re.MULTILINE)
     if not m:
         return _insert_before_commit(text, line)
     return text[: m.start()] + line + "\n" + text[m.start():]
@@ -169,11 +169,13 @@ def compile_intent(intent: Intent, topo: Topology, state: NetworkState) -> Netwo
             new = _insert_first_rule(text, rule) if "-j DROP" in text else _insert_before_commit(text, rule)
             out = out.with_file(dst, IPT, new)
         # stateless host firewalls: a source host that has a firewall needs a return-traffic rule
-        if intent.protocol != "icmp":
+        if intent.protocol == "icmp":
+            ret = f"-A INPUT -s {topo.hosts[dst].ip}/32 -p icmp -j ACCEPT"
+        else:
             ret = f"-A INPUT -s {topo.hosts[dst].ip}/32 -p {intent.protocol} --sport {intent.port} -j ACCEPT"
-            for h in _hosts_in(topo, intent.src_zone):
-                if topo.hosts[h].firewall and ret not in out.get(h, IPT):
-                    out = out.with_file(h, IPT, _insert_before_commit(out.get(h, IPT), ret))
+        for h in _hosts_in(topo, intent.src_zone):
+            if topo.hosts[h].firewall and ret not in out.get(h, IPT):
+                out = out.with_file(h, IPT, _insert_before_commit(out.get(h, IPT), ret))
         return out
     if intent.kind == "block_service":
         dst = intent.dst_host

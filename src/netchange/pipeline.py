@@ -60,7 +60,7 @@ class RunRecord:
     config: str
     generator: str
     intent: dict | None = None
-    outcome: str = ""  # applied | rejected | clarify | refuse | rolled_back | rollback_failed | approved_not_applied | error
+    outcome: str = ""  # applied | noop | rejected | clarify | refuse | preflight_failed | rolled_back | rollback_failed | applied_broken | approved_not_applied | error
     reason: str = ""
     attempts: list[Attempt] = field(default_factory=list)
     risk: str = ""
@@ -82,6 +82,29 @@ def risk_of(changed: list[tuple[str, str]]) -> str:
     if any(fn == FRR for _, fn in changed) or len(changed) > 2:
         return "high"
     return "low"
+
+
+def _ospf_costs(frr_text: str) -> set[tuple[str, str]]:
+    """(interface, cost) pairs from an FRR config (file or `show running-config`)."""
+    out, iface = set(), None
+    for ln in frr_text.splitlines():
+        if ln.startswith("interface "):
+            iface = ln.split()[1]
+        elif ln.strip().startswith("ip ospf cost") and iface:
+            out.add((iface, ln.split()[-1]))
+    return out
+
+
+def _rules(ipt_text: str) -> list[str]:
+    """Normalised INPUT rules + chain policies, ignoring comments and counters."""
+    keep = []
+    for ln in ipt_text.splitlines():
+        ln = ln.strip()
+        if ln.startswith("-A INPUT"):
+            keep.append(" ".join(ln.replace(" -m tcp", "").replace(" -m udp", "").replace(" -m icmp", "").split()))
+        elif ln.startswith(":INPUT"):
+            keep.append(ln.split("[")[0].strip())
+    return keep
 
 
 def _fail_dict(c: CheckResult) -> dict:
@@ -138,44 +161,66 @@ class Pipeline:
         ps = invariant_probes(self.topo, self.inv)
         for pc in postconditions(intent, self.topo):
             if pc["ports"] == "icmp" or pc["ports"].startswith("tcp/"):
-                ps.append(Probe(pc["src"], pc["dst"], pc["ports"], pc["expect"]))
+                ps.append(Probe(pc["src"], pc["dst"], pc["ports"], "reachable" if pc["expect"] else "blocked"))
         return ps
+
+    def preflight(self, rec: RunRecord, intent: Intent) -> bool:
+        """Probe the live network BEFORE changing it. Refuse to change a network that is already
+        unhealthy, and keep the snapshot so rollback can be checked against it exactly."""
+        t0 = time.time()
+        probes = self.lab.run_probes(self._probes(intent))
+        self._pre = {(p.src, p.dst, p.ports): p.got for p in probes}
+        inv_keys = {(p.src, p.dst, p.ports) for p in invariant_probes(self.topo, self.inv)}
+        bad = [p for p in probes if (p.src, p.dst, p.ports) in inv_keys and not p.ok]
+        rec.timings["preflight"] = round(time.time() - t0, 2)
+        rec.probes = [{"stage": "preflight", "src": p.src, "dst": p.dst, "ports": p.ports,
+                       "expect": p.expect, "got": p.got} for p in bad]
+        return not bad
 
     def apply_and_test(self, rec: RunRecord, state: NetworkState, cand: NetworkState, intent: Intent) -> bool:
         changed = state.changed_files(cand)
         rec.applied_files = [f"{d}/{f}" for d, f in changed]
         t0 = time.time()
         self.lab.push(cand, only=changed)
+        converged = True
         if any(fn == FRR for _, fn in changed):
             time.sleep(1.0)  # let FRR start reacting before we poll
-            ok, _ = self.lab.wait_converged(timeout=90)
+            converged, _ = self.lab.wait_converged(timeout=90)
         rec.timings["apply"] = round(time.time() - t0, 2)
         if not self.cfg.post_checks:
             return True
+        if not converged:
+            rec.probes.append({"stage": "post", "src": "ospf", "dst": "all", "ports": "-",
+                               "expect": "converged", "got": str(self.lab.ospf_full())})
         t0 = time.time()
         probes = self.lab.run_probes(self._probes(intent))
         rec.timings["post_checks"] = round(time.time() - t0, 2)
-        rec.probes = [{"src": p.src, "dst": p.dst, "ports": p.ports, "expect": p.expect, "got": p.got}
-                      for p in probes if not p.ok]
-        return all(p.ok for p in probes)
+        rec.probes += [{"stage": "post", "src": p.src, "dst": p.dst, "ports": p.ports, "expect": p.expect,
+                        "got": p.got} for p in probes if not p.ok]
+        return converged and all(p.ok for p in probes)
 
     def restore(self, rec: RunRecord, state: NetworkState, cand: NetworkState) -> bool:
-        """Re-apply the previous config for every changed file, then confirm the baseline probes."""
+        """Re-apply the previous config for every changed file. Success = every probe returns
+        exactly what it returned in pre-flight, and the device configs really are back."""
         changed = state.changed_files(cand)
         t0 = time.time()
         self.lab.push(state, only=changed)
         if any(fn == FRR for _, fn in changed):
             time.sleep(1.0)
             self.lab.wait_converged(timeout=90)
-        probes = self.lab.run_probes(invariant_probes(self.topo, self.inv))
-        ok = all(p.ok for p in probes)
-        if ok:  # also confirm the device configs really are back
-            for dev, fn in changed:
-                if fn == FRR:
-                    running = self.lab.running_frr(dev)
-                    ok &= all(ln.strip() in running for ln in state.get(dev, fn).splitlines()
-                              if ln.strip().startswith(("ip ospf cost", "passive-interface")))
+        pre = getattr(self, "_pre", {})
+        probes = self.lab.run_probes([Probe(s, d, p, "reachable") for s, d, p in pre])
+        mismatch = [p for p in probes if p.got != pre[(p.src, p.dst, p.ports)]]
+        ok = not mismatch
+        for dev, fn in changed:
+            if fn == FRR:
+                ok &= _ospf_costs(self.lab.running_frr(dev)) == _ospf_costs(state.get(dev, fn))
+            else:
+                live = self.lab.exec(dev, "iptables-save -t filter")
+                ok &= _rules(live) == _rules(state.get(dev, fn))
         rec.timings["rollback"] = round(time.time() - t0, 2)
+        rec.probes += [{"stage": "rollback", "src": p.src, "dst": p.dst, "ports": p.ports,
+                        "expect": pre[(p.src, p.dst, p.ports)], "got": p.got} for p in mismatch]
         return ok
 
     # ---- end to end ---------------------------------------------------------------------------
@@ -186,7 +231,7 @@ class Pipeline:
         t_start = time.time()
         try:
             self._run(rec, request, state, intent, approve)
-        except Exception as e:  # recorded, never hidden
+        except Exception as e:  # noqa: BLE001 - recorded in the audit log, never hidden
             rec.outcome, rec.reason = "error", f"{type(e).__name__}: {e}"
         rec.timings["total"] = round(time.time() - t_start, 2)
         llm = getattr(getattr(self.generator, "llm", None), "usage", None)
@@ -216,6 +261,10 @@ class Pipeline:
 
         # 2-4. generate, check, repair
         base_snap = self.v.load(state, "baseline-" + state.digest())
+        pcs = postconditions(intent, self.topo)
+        if pcs and all(self.v.flow_ok(base_snap, p["src"], p["dst"], p["ports"])[0] == p["expect"] for p in pcs):
+            rec.outcome, rec.reason = "noop", "already in place on the current network"
+            return
         self.generator.start(intent, state)
         feedback, cand, att = None, None, None
         max_attempts = 1 + (self.cfg.repair_attempts if self.generator.name == "llm" else 0)
@@ -224,7 +273,7 @@ class Pipeline:
             ta = time.time()
             try:
                 cand, expl = self.generator.generate(state, feedback)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - a bad generation is an outcome, not a crash
                 rec.attempts.append(Attempt(n=n, error=f"{type(e).__name__}: {e}"))
                 break
             att = self.check(base_snap, state, cand, intent)
@@ -245,6 +294,7 @@ class Pipeline:
             return
         rec.final_diff = att.diff
         rec.oracle_safe = not att.oracle_failures
+        self.last_candidate = cand
 
         # 5. approval gate
         changed = state.changed_files(cand)
@@ -263,6 +313,11 @@ class Pipeline:
         if not (self.cfg.apply and self.lab is not None):
             rec.outcome = "approved_not_applied"
             return
+        if self.cfg.post_checks and not self.preflight(rec, intent):
+            rec.outcome = "preflight_failed"
+            rec.reason = "network unhealthy before the change: " + ", ".join(
+                f"{p['src']}->{p['dst']} {p['ports']} expected {p['expect']}, got {p['got']}" for p in rec.probes[:3])
+            return
         if self.apply_and_test(rec, state, cand, intent):
             rec.outcome = "applied"
             return
@@ -272,5 +327,5 @@ class Pipeline:
         rec.rollback_ok = self.restore(rec, state, cand)
         rec.outcome = "rolled_back" if rec.rollback_ok else "rollback_failed"
         rec.reason = "live checks failed: " + ", ".join(
-            f"{p['src']}->{p['dst']} {p['ports']} expected {'open' if p['expect'] else 'closed'}"
-            for p in rec.probes[:3])
+            f"{p['src']}->{p['dst']} {p['ports']} expected {p['expect']}, got {p['got']}"
+            for p in rec.probes if p.get("stage") == "post")

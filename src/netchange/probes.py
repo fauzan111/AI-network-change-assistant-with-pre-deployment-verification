@@ -27,18 +27,18 @@ def port_samples(topo: Topology, dst: str, ports: str) -> list[str]:
 def invariant_probes(topo: Topology, inv: dict) -> list[Probe]:
     out: list[Probe] = []
     for r in inv.get("require", []):
-        out.append(Probe(r["from"], r["to"], r["ports"], True))
+        out.append(Probe(r["from"], r["to"], r["ports"], "open"))
     for r in inv.get("deny", []):
         for src in hosts_in(topo, r["from"]):
             for dst in _as_list(r["to"]):
-                out += [Probe(src, dst, p, False) for p in port_samples(topo, dst, r.get("ports", "any"))]
+                out += [Probe(src, dst, p, "blocked") for p in port_samples(topo, dst, r.get("ports", "any"))]
     for r in inv.get("only", []):
         dsts = _as_list(r["to"])
         allowed = {h for z in r["allowed_from"] for h in hosts_in(topo, z)}
         for src in topo.hosts:
             if src in allowed or src in dsts:
                 continue
-            out += [Probe(src, dst, r["ports"], False) for dst in dsts]
+            out += [Probe(src, dst, r["ports"], "blocked") for dst in dsts]
     # de-duplicate (same src/dst/port may come from several rules)
     seen, uniq = set(), []
     for p in out:

@@ -30,7 +30,8 @@ def _docker_env() -> dict:
 
 
 def sh(args: list[str], stdin: str | None = None, check: bool = True, timeout: int = 120) -> str:
-    p = subprocess.run(args, input=stdin, capture_output=True, text=True, env=_docker_env(), timeout=timeout)
+    p = subprocess.run(args, input=stdin, capture_output=True, text=True, env=_docker_env(), timeout=timeout,
+                       check=False)
     if check and p.returncode != 0:
         raise RuntimeError(f"{' '.join(args)} -> {p.returncode}\n{p.stdout}\n{p.stderr}")
     return p.stdout
@@ -38,15 +39,22 @@ def sh(args: list[str], stdin: str | None = None, check: bool = True, timeout: i
 
 @dataclass
 class Probe:
+    """expect: 'open' (service answers), 'reachable' (packet reaches the host: open or refused,
+    i.e. the network permits it) or 'blocked' (dropped on the way: timeout)."""
+
     src: str
     dst: str  # host name
     ports: str  # tcp/443 | icmp
-    expect: bool  # should it connect?
-    got: bool | None = None
+    expect: str
+    got: str | None = None  # open | refused | blocked
 
     @property
     def ok(self) -> bool:
-        return self.got == self.expect
+        if self.expect == "open":
+            return self.got == "open"
+        if self.expect == "reachable":
+            return self.got in ("open", "refused")
+        return self.got == "blocked"
 
 
 class Lab:
@@ -151,13 +159,19 @@ class Lab:
     def probe(self, p: Probe) -> Probe:
         ip = self.topo.hosts[p.dst].ip
         if p.ports == "icmp":
-            cmd = f"ping -c1 -W1 {ip} >/dev/null 2>&1 && echo OK || echo FAIL"
+            out = self.exec(p.src, f"ping -c1 -W1 {ip} >/dev/null 2>&1 && echo OK || echo FAIL", check=False)
+            p.got = "open" if out.strip() == "OK" else "blocked"
+            return p
+        proto, _, port = p.ports.partition("/")
+        if proto != "tcp":
+            raise ValueError(f"lab probes support tcp/icmp, got {p.ports}")
+        out = self.exec(p.src, f"nc -z -v -w 2 {ip} {port} 2>&1; echo rc=$?", check=False)
+        if "rc=0" in out:
+            p.got = "open"
+        elif "refused" in out.lower():  # RST from the host: the firewall let it through, no listener
+            p.got = "refused"
         else:
-            proto, _, port = p.ports.partition("/")
-            if proto != "tcp":
-                raise ValueError(f"lab probes support tcp/icmp, got {p.ports}")
-            cmd = f"nc -z -w 2 {ip} {port} >/dev/null 2>&1 && echo OK || echo FAIL"
-        p.got = self.exec(p.src, cmd, check=False).strip() == "OK"
+            p.got = "blocked"
         return p
 
     def run_probes(self, probes: list[Probe]) -> list[Probe]:
