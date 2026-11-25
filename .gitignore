@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-ui/
 .pytest_cache/
 .ruff_cache/
 build/

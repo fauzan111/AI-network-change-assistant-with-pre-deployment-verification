@@ -113,6 +113,10 @@ There are more details in [docs/FINDINGS.md](docs/FINDINGS.md).
 
 ## Run it
 
+For a hosted, read-only portfolio viewer, use the root **`streamlit_app.py`** entry point.
+It displays the committed evaluation, recorded requests, counterexamples, topology and demo without Docker or API keys.
+See [docs/STREAMLIT.md](docs/STREAMLIT.md) for local preview and Streamlit Community Cloud deployment settings.
+
 You need Docker (tested on Docker Desktop, Apple Silicon) and [uv](https://docs.astral.sh/uv/).
 
 ```bash
