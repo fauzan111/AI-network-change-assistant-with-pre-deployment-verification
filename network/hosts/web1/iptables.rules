@@ -1,0 +1,12 @@
+# web1 host firewall. Verifier-safe dialect only (see docs/FINDINGS.md):
+# stateless rules, no -m modules, no -i/-o, so Batfish models every line exactly.
+*filter
+:INPUT DROP [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -s 10.1.99.0/24 -p icmp -j ACCEPT
+-A INPUT -s 10.1.99.0/24 -p tcp --dport 22 -j ACCEPT
+-A INPUT -s 10.1.10.0/24 -p tcp --dport 80 -j ACCEPT
+-A INPUT -s 10.1.10.0/24 -p tcp --dport 443 -j ACCEPT
+-A INPUT -s 10.3.20.0/24 -p tcp --sport 5432 -j ACCEPT
+COMMIT

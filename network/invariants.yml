@@ -1,0 +1,44 @@
+# Rules that must hold before AND after every change. A candidate that breaks any
+# of them is rejected before it touches the lab.
+#
+# Zones and hosts refer to topology.yml. Ports: "tcp/443", "udp/53", "icmp" or "any".
+
+# No traffic of the given kind from a zone may be accepted by the target hosts.
+deny:
+  - id: guest-isolated-from-datacenter
+    from: guest-wifi
+    to: [web1, db1]
+    ports: any
+    why: Guest Wi-Fi must never reach any server, on any port.
+  - id: branch-no-database
+    from: branch-users
+    to: [db1]
+    ports: any
+    why: Users never talk to the database directly; only the web tier does.
+
+# Only the listed zones may reach the service; every other host must be refused.
+only:
+  - id: db-only-from-web
+    to: [db1]
+    ports: tcp/5432
+    allowed_from: [web]
+    why: The database port is reachable from the web tier only.
+  - id: ssh-only-from-mgmt
+    to: [web1, db1]
+    ports: tcp/22
+    allowed_from: [mgmt]
+    why: Server SSH is reachable from the management network only.
+
+# Business flows that must keep working (catches collateral damage).
+require:
+  - {id: hq-web-http,   from: hq-pc,   to: web1, ports: tcp/80}
+  - {id: hq-web-https,  from: hq-pc,   to: web1, ports: tcp/443}
+  - {id: web-db,        from: web1,    to: db1,  ports: tcp/5432}
+  - {id: mgmt-ssh-web1, from: mgmt-pc, to: web1, ports: tcp/22}
+  - {id: mgmt-ssh-db1,  from: mgmt-pc, to: db1,  ports: tcp/22}
+
+# Control-plane health.
+routing:
+  ospf_full_adjacency: true   # every point-to-point link has an established OSPF session
+  loopback_mesh: true         # every router reaches every other router's loopback
+  no_forwarding_loops: true

@@ -1,0 +1,72 @@
+# Source of truth for the lab network ("Acme Corp").
+# Both the Batfish snapshot and the Containerlab lab are rendered from this file
+# plus the per-device configs in routers/<name>/frr.conf and hosts/<name>/iptables.rules.
+#
+# Six FRR routers run OSPF area 0. Host firewalls (iptables INPUT) on the servers
+# carry the access policy: Batfish models the iptables filter table on hosts, but
+# not packet filters on FRR/Cumulus routers (see docs/FINDINGS.md).
+
+name: acme
+
+routers:
+  core1:
+    loopback: 10.0.0.1/32
+    interfaces:
+      eth1: {address: 10.255.0.0/31, peer: core2}
+      eth2: {address: 10.255.0.2/31, peer: hq}
+      eth3: {address: 10.255.0.6/31, peer: branch}
+      eth4: {address: 10.255.0.10/31, peer: dc}
+  core2:
+    loopback: 10.0.0.2/32
+    interfaces:
+      eth1: {address: 10.255.0.1/31, peer: core1}
+      eth2: {address: 10.255.0.4/31, peer: hq}
+      eth3: {address: 10.255.0.8/31, peer: branch}
+      eth4: {address: 10.255.0.12/31, peer: dc}
+      eth5: {address: 10.255.0.14/31, peer: guest}
+  hq:
+    loopback: 10.0.0.11/32
+    interfaces:
+      eth1: {address: 10.255.0.3/31, peer: core1}
+      eth2: {address: 10.255.0.5/31, peer: core2}
+      eth3: {address: 10.1.10.1/24, lan: hq-users}
+      eth4: {address: 10.1.99.1/24, lan: mgmt}
+  branch:
+    loopback: 10.0.0.12/32
+    interfaces:
+      eth1: {address: 10.255.0.7/31, peer: core1}
+      eth2: {address: 10.255.0.9/31, peer: core2}
+      eth3: {address: 10.2.10.1/24, lan: branch-users}
+  dc:
+    loopback: 10.0.0.13/32
+    interfaces:
+      eth1: {address: 10.255.0.11/31, peer: core1}
+      eth2: {address: 10.255.0.13/31, peer: core2}
+      eth3: {address: 10.3.10.1/24, lan: web}
+      eth4: {address: 10.3.20.1/24, lan: db}
+  guest:
+    loopback: 10.0.0.14/32
+    interfaces:
+      eth1: {address: 10.255.0.15/31, peer: core2}
+      eth2: {address: 10.4.10.1/24, lan: guest-wifi}
+
+# Each host has one interface (eth1) on a router LAN.
+# `listen` = TCP services the host runs in the lab; `firewall: true` = has iptables.rules.
+hosts:
+  hq-pc:     {router: hq,     router_if: eth3, address: 10.1.10.10/24}
+  mgmt-pc:   {router: hq,     router_if: eth4, address: 10.1.99.10/24}
+  branch-pc: {router: branch, router_if: eth3, address: 10.2.10.10/24}
+  web1:      {router: dc,     router_if: eth3, address: 10.3.10.10/24, listen: [22, 80, 443], firewall: true}
+  db1:       {router: dc,     router_if: eth4, address: 10.3.20.10/24, listen: [22, 5432],    firewall: true}
+  guest-pc:  {router: guest,  router_if: eth2, address: 10.4.10.10/24}
+
+# Named address groups, used by intents and invariants.
+zones:
+  hq-users:     10.1.10.0/24
+  mgmt:         10.1.99.0/24
+  branch-users: 10.2.10.0/24
+  web:          10.3.10.0/24
+  db:           10.3.20.0/24
+  guest-wifi:   10.4.10.0/24
+  datacenter:   10.3.0.0/16
+  internal:     10.0.0.0/8
