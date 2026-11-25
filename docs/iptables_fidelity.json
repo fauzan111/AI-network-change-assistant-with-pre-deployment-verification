@@ -1,0 +1,121 @@
+[
+ {
+  "construct": "plain -s -p --dport",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-m tcp --dport (iptables-save style)",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "--dport range",
+  "linux_match_flow": "DENY",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "fail-closed",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-d destination",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "--sport",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "! -s negation",
+  "linux_match_flow": "NO_ANSWER",
+  "linux_nomatch_flow": "NO_ANSWER",
+  "verdict": "FAIL-OPEN",
+  "batfish_warnings": "Convert error: org.batfish.common.BatfishException: Unknown matchdata type\n\tat org.batfish"
+ },
+ {
+  "construct": "comma-separated -s",
+  "linux_match_flow": "DENY",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "fail-closed",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-m multiport --dports",
+  "linux_match_flow": "DENY",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "fail-closed",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-m conntrack --ctstate ESTABLISHED",
+  "linux_match_flow": null,
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-m conntrack ESTABLISHED, stray ACK",
+  "linux_match_flow": null,
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-m state --state ESTABLISHED",
+  "linux_match_flow": null,
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-i lo",
+  "linux_match_flow": null,
+  "linux_nomatch_flow": "PERMIT",
+  "verdict": "FAIL-OPEN",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-i eth1",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-m comment",
+  "linux_match_flow": "DENY",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "fail-closed",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "-j REJECT before ACCEPT",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "PERMIT",
+  "verdict": "FAIL-OPEN",
+  "batfish_warnings": "Convert warning (redflag): IpTables action type 'CHAIN' is not supported. Skipped '-s 10.4"
+ },
+ {
+  "construct": "-j DROP before ACCEPT",
+  "linux_match_flow": "PERMIT",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "exact",
+  "batfish_warnings": ""
+ },
+ {
+  "construct": "custom chain jump",
+  "linux_match_flow": "DENY",
+  "linux_nomatch_flow": "DENY",
+  "verdict": "fail-closed",
+  "batfish_warnings": "Convert warning (redflag): IpTables action type 'CHAIN' is not supported. Skipped '-j WEB'"
+ }
+]

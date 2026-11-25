@@ -206,6 +206,49 @@ class Verifier:
         v.checks += [self.check_require(snap, r) for r in self.inv.get("require", [])]
         return v
 
+    # ---- intent-specific checks --------------------------------------------------------------
+    def check_intent(self, base: str, cand: str, intent) -> list[CheckResult]:
+        """Does the candidate do what was asked (post-conditions) and nothing else (scope)?"""
+        from .intent import out_of_scope_regions, postconditions
+
+        out = []
+        for pc in postconditions(intent, self.topo):
+            ok, why = self.flow_ok(cand, pc["src"], pc["dst"], pc["ports"])
+            good = ok == pc["expect"]
+            verb = "works" if pc["expect"] else "is blocked"
+            out.append(CheckResult(f"intent: {pc['src']} -> {pc['dst']} {pc['ports']} {verb}", "intent",
+                                   good, "", "" if good else (why or "flow still accepted")))
+        if intent.kind == "set_ospf_cost":
+            f = self._q(cand, self.bf.q.ospfInterfaceConfiguration(nodes=intent.router))
+            row = f[f["Interface"].astype(str) == f"{intent.router}[{intent.interface}]"]
+            got = int(row.iloc[0]["OSPF_Cost"]) if not row.empty else None
+            out.append(CheckResult(f"intent: OSPF cost {intent.router}:{intent.interface} = {intent.cost}",
+                                   "intent", got == intent.cost, "", f"cost is {got}"))
+        for reg in out_of_scope_regions(intent, self.topo):
+            changed = self.diff_region(base, cand, reg["start"], reg["headers"])
+            out.append(CheckResult(f"scope: {reg['name']} unchanged", "scope", not changed,
+                                   f"{len(changed)} flow class(es) changed",
+                                   "; ".join(f"{c['src']} {c['src_ip']}->{c['dst_ip']} {c['proto']}/{c['dst_port']}"
+                                             f" {c['before']}->{c['after']}" for c in changed[:3])))
+        return out
+
+    def diff_region(self, base: str, cand: str, start: list[str], headers: dict) -> list[dict]:
+        ans = self.bf.q.differentialReachability(
+            pathConstraints=PathConstraints(startLocation=",".join(start)),
+            headers=HeaderConstraints(**headers),
+        ).answer(snapshot=cand, reference_snapshot=base).frame()
+        return [self._diff_row(r) for r in ans.itertuples()]
+
+    @staticmethod
+    def _diff_row(row) -> dict:
+        f = row.Flow
+        return {
+            "src": f.ingressNode, "src_ip": f.srcIp, "dst_ip": f.dstIp,
+            "proto": f.ipProtocol, "dst_port": f.dstPort,
+            "before": row.Reference_Traces[0].disposition if row.Reference_Traces else "?",
+            "after": row.Snapshot_Traces[0].disposition if row.Snapshot_Traces else "?",
+        }
+
     # ---- change scope -----------------------------------------------------------------------
     def reachability_diff(self, base: str, cand: str) -> list[dict]:
         """Host-to-host flows whose outcome differs between two snapshots."""
