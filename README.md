@@ -8,6 +8,10 @@ and rolled back automatically if the live checks fail.
 
 The point: the AI's proposal is accepted because it was **checked against network behaviour**, not because the text looks reasonable.
 
+![demo: applied, rejected with counterexample, rolled back after drift](docs/media/demo.gif)
+
+*Real run on the live lab (`make demo`). In this recording the intents are given structured and the configs come from the reference compiler. The Batfish checks, live probes and rollback are all real.*
+
 ```mermaid
 flowchart LR
     R["request<br/>(plain language)"] --> I["intent<br/>Claude → typed schema"]

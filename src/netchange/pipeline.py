@@ -49,6 +49,7 @@ class Attempt:
     failures: list[dict] = field(default_factory=list)  # enforced checks that failed
     oracle_failures: list[dict] = field(default_factory=list)  # all checks that failed (recorded)
     accepted: bool = False
+    n_checks: int = 0  # verifier checks evaluated on this candidate
     error: str = ""
     seconds: float = 0.0
 
@@ -140,6 +141,7 @@ class Pipeline:
         if verdict.passed or all(c.kind != "parse" for c in verdict.failures):
             checks += self.v.check_intent(base_snap, verdict.snapshot, intent)
         failed = [c for c in checks if not c.passed]
+        att.n_checks = len(checks)
         att.oracle_failures = [_fail_dict(c) for c in failed]
         if att.lint_issues:  # a lint failure means the Batfish verdict cannot be trusted
             att.oracle_failures.insert(0, {"id": "dialect", "kind": "lint", "detail": att.lint_issues[0],

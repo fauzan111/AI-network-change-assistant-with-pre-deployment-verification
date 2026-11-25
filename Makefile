@@ -1,7 +1,7 @@
 PY ?= .venv/bin/python
 export PATH := /Applications/Docker.app/Contents/Resources/bin:$(PATH)
 
-.PHONY: setup images batfish lab-up lab-down verify test probe requests eval-template eval-llm
+.PHONY: setup images batfish lab-up lab-down verify test probe requests eval-template eval-llm demo
 
 setup:            ## venv + package
 	uv venv --python 3.12 && uv pip install -e ".[dev]"
@@ -37,3 +37,6 @@ eval-template:    ## no-LLM evaluation (gold intents), free
 
 eval-llm:         ## Claude evaluation (costs API credits)
 	$(PY) -m netchange.evaluate --generator llm --configs llm-only,+lint,+batfish,+intent,+repair,full
+
+demo:             ## three live scenes -> docs/media/demo.gif
+	$(PY) scripts/demo.py && $(PY) scripts/render_demo_gif.py
